@@ -5,13 +5,14 @@
 # imports
 from __future__ import print_function
 import socket
-import cPickle as pickle
+import pickle
+import json
 import glob
 import os
 
 # -------------------------------------------------- #
 
-RESET_CMD = str([0, 0, 0, 1])
+RESET_CMD = [0, 0, 0, 1]
 DEFAULT_IP = '127.0.0.1'
 DEFAULT_PORT = 50007
 
@@ -27,9 +28,12 @@ class F9GameClient:
         self.reset_game()
         self.totalScore = 0
 
+    def send(self, message):
+        self.socket.send(json.dumps(message).encode('utf-8'))
+
     def reset_game(self):
         # send init command | new game
-        self.socket.send(RESET_CMD)
+        self.send(RESET_CMD)
         self.curState = self.getServerState()
 
     def isTerminalState(self, state):
@@ -70,16 +74,16 @@ class F9GameClient:
         data = eval(self.socket.recv(1024))
         state = None
         if data:
-            agent_state = (item for item in data if item["type"] == "actor").next()
-            platform_state = (item for item in data if item["type"] == "decoration").next()
-            system_state = (item for item in data if item["type"] == "system").next()
+            agent_state = next(item for item in data if item["type"] == "actor")
+            platform_state = next(item for item in data if item["type"] == "decoration")
+            system_state = next(item for item in data if item["type"] == "system")
             state = [agent_state, platform_state, system_state]
         return state
 
     def doAction(self, action):
         # act in the game environment
         if any([action == act for act in self.actions()]):
-            self.socket.send(str(action))
+            self.send(action)
             self.curState = self.getServerState()
         else:
             print("Invalid Action")
@@ -106,22 +110,14 @@ class Snapshot:
 
     def save(self, state, num):
         file_path = '_'.join([self.prefix, str(num)])
-        f = file(''.join([file_path, '.pkl']), 'wb')
-        pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
-        f.close()
+        file_name = ''.join([file_path, '.pkl'])
+        pickle.dump(state, file_name, protocol=pickle.HIGHEST_PROTOCOL)
 
     def load(self):
         file_path = glob.glob(''.join([self.prefix, "*_[0-9]*.pkl"]))
         file_path.sort(key=os.path.getctime)
-        state = None
-        if len(file_path):
-            f = file(file_path[-1], 'rb')
-            print("Loading snapshot", file_path[-1])
-            state = pickle.load(f)
-            f.close()
-        return state
+        if not len(file_path):
+            return
 
-
-# -------------------------------------------------- #
-# -------------------------------------------------- #
-# -------------------------------------------------- #
+        print("Loading snapshot", file_path[-1])
+        return pickle.load(file_path[-1])
