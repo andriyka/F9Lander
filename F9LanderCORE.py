@@ -8,7 +8,7 @@ import pygame
 from pygame.locals import *
 import numpy as np
 import argparse
-
+import json
 # for external control commands
 import socket
 
@@ -431,7 +431,12 @@ class Simulation(object):
                 keys = [key[pygame.K_w], key[pygame.K_a], key[pygame.K_d], key[pygame.K_n]]
         elif self.commands == "socket":
             key = self.conn.recv(1024)
-            keys = eval(key)   # eval is bad idea but it works
+            try:
+                keys = json.loads(key)
+            except (ValueError, TypeError) as exc:
+                keys = [0, 0, 0, 0]
+                print(exc)
+
             # print keys, type(keys)
         # INPUT FROM PIPE OR SOCKET HERE
         if keys[3] != 0:
