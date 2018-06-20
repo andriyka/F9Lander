@@ -27,6 +27,7 @@ class F9GameClient:
         self.curState = None
         self.reset_game()
         self.totalScore = 0
+        self.vy_hist = []
 
     def send(self, message):
         self.socket.send(json.dumps(message).encode('utf-8'))
@@ -68,7 +69,12 @@ class F9GameClient:
             # third indicator, so the brain could be able to determine how to tune the vy speed
             score = 0.0
 
-            score += (7.0 + agent["vy"]) # if (7.0 + agent["vy"]) < 0 else (7.0 + agent["vy"]) # Do nothing
+            score += 30 if (7.0 + agent["vy"]) > 0 else 0# Do nothing
+
+            if self.vy_hist:
+                score += (abs(self.vy_hist[-1]) - abs(agent['vy'])) * 10 # vy should decrease
+
+            self.vy_hist.append(agent['vy'])
 
             if agent["angle"] < 0.01:
                 score += 5
@@ -80,7 +86,7 @@ class F9GameClient:
             else:
                 score -= abs(agent['px'] - platform['px']) / 3
 
-            if agent['contact'] and abs(agent['vy']) < 30:
+            if agent['contact'] and abs(agent['vy']) < 7:
                 score += 50
 
             # -----------------------------------
