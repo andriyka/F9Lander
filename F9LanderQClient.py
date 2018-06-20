@@ -1,96 +1,84 @@
-# -------------------------------------------------- #
-# --------------------_F9_Lander_------------------- #
-# ----------------------CLIENT---------------------- #
-# -------------------------------------------------- #
-
 from __future__ import print_function
 import numpy as np
 from F9utils import F9GameClient
 from F9utils import RLAgent
 
-# for delay in debug launch
-import time
-
-# -------------------------------------------------- #
-
 
 class SimpleAgent(RLAgent):
-    def __init__(self, client):
+    def __init__(self,
+                 client,
+                 state = None,
+                 learning_rate=0.15,
+                 discount_factor=0.9,
+                 exploration_rate=0.6,
+                 exploration_decay_rate=0.96):
+
+        self.learning_rate = learning_rate
+        self.discount_factor = discount_factor
+        self.exploration_rate = exploration_rate
+        self.exploration_decay_rate = exploration_decay_rate
+        self.state = state
+        self._num_actions = 8
+        self.action = np.random.randint(0, self._num_actions - 1)
+
         self.client = client
 
-    def getAction(self, state):
-        # state example
-        # ({'dist': 30.396299362182617, 'contact_time': 0, 'vx': -21.335142135620117, 'vy': 0.9811121821403503,
-        # 'angle': -0.05268074572086334, 'px': 43.301612854003906, 'py': 42.239990234375, 'live': True, 'contact': False,
-        # 'fuel': 791.9, 'type': 'actor', 'enj': True, 'wind': 32.0}, {'angle': 0.01994907110929489,
-        # 'px': 52.044925689697266, 'py': 4.305685997009277, 'vx': 0.8977082371711731, 'vy': 0.7780137658119202,
-        # 'type': 'decoration'}, {'step': 99, 'type': 'system', 'flight_status': 'none'})
-        #
-        # 'dist' - distance between two nearest points of rocket and a platform body
-        #
-        # 'contact_time' - time counter, which starts from the moment when rocket contacts with the platform
-        #                  you need to keep contact with the platform for some time, without destroying yourself, to win
-        #
-        # 'vx' | 'vy' - vertical and horizontal velocity
-        #
-        # 'angle' - angle of hade
-        #
-        # 'px' | 'py' - coordinates of the body central point
-        #
-        # 'live' - still alive? "False" if not
-        #
-        # 'contact' - is there a contact with the platform? "False" if not
-        #
-        # 'fuel' - the amount of remaining fuel
-        #
-        # 'type' - type of the object | "actor" - rocket | "decoration" - platform | "system" - world
-        #
-        # 'enj' - are the engines workable? "False" if fuel tank is empty
-        #
-        # 'wind' - wind strength
-        #
-        # 'step' - iteration counter
-        #
-        # 'flight_status' - win or loss? | "landed" or "destroyed"?
-        #                   "none" means that you don't know, whether you landed or destroyed, or maybe still flying
-        #                   "landed" means that you won
-        agent, platform, system = state
-        actions = self.client.actions(state)  # Get legal actions for state
+        self.__boundaries = [
+           # (0, 999), #fuel
+            (-50, 50), # vx
+            (0, 60), #dist
+            (-0.3, 0.3), #angle
+            (0, 100), # px,
+            (-50, 1) #vy
+        ]
 
-        # Agent if-then-else logic example
-        if agent["vy"] <= -7.0:
-            action = actions[-1]  # Full throttle
-        else:
-            action = actions[0]  # Do nothing
+        self.num_discrete_states = 8
+        self._discrete_states = [np.linspace(low, up, self.num_discrete_states) for (low, up) in self.__boundaries]
+        self._len_discrete_states = self.num_discrete_states ** len(self._discrete_states)
+        self.q = np.zeros((self._len_discrete_states, self._num_actions))
 
-        if agent["angle"] < 0.0:
-            action[1] = 1  # Left nozzle burn
-        else:
-            action[1] = 0
 
-        if agent["angle"] > 0.0:
-            action[2] = 1  # Right nozzle burn
-        else:
-            action[2] = 0
+    def getAction(self, state, reward):
+        next_state = self._build_state(state)
 
-        return action
+        enable_exploration = (1 - self.exploration_rate) <= np.random.uniform(0, 1)
+
+        next_action = np.random.randint(0, self._num_actions - 1)
+
+        if not enable_exploration:
+            next_action = np.argmax(self.q[next_state])
+
+        return next_action
 
     def provideFeedback(self, state, action, reward, new_state):
-        # Do nothing
-        pass
+        state = self._build_state(state)
+        new_state = self._build_state(new_state)
+        self.q[state, action] = (1 - self.learning_rate) * self.q[state, action] \
+                                          + (self.learning_rate * (reward + self.discount_factor
+                                                                   * self.q[new_state, np.argmax(self.q[new_state])]))
 
-# -------------------------------------------------- #
+    def _build_state(self, observation):
+
+        observation = [observation[0]['vx'], observation[0]['dist'], observation[0]['angle'], observation[0]['px'],
+                       observation[0]['vy']]
+
+        states = [np.digitize(val, self._discrete_states[i]) * (len(self._discrete_states) ** i) for i, val in
+                  enumerate(observation)]
+        return sum(states)
 
 
 def solve():
     # Setup agent
     client = F9GameClient()
-    ai = SimpleAgent(client)
-    state = client.curState  # Observe current state
-
+    state = client.curState
+    ai = SimpleAgent(client, state=state)
+     # Observe current state
+    reward = 0
     while True:
-        action = ai.getAction(state)                            # Decide what to do
-        client.doAction(action)                                 # Act
+        action = ai.getAction(state, reward)
+        actions = client.actions(state)
+        act_arr = actions[action]# Decide what to do
+        client.doAction(act_arr)                                 # Act
         new_state = client.curState                             # Observe new state
         reward = client.getReward(new_state)                    # Observe reward
         ai.provideFeedback(state, action, reward, new_state)    # Provide feeback to the agent

@@ -432,7 +432,7 @@ class Simulation(object):
         elif self.commands == "socket":
             key = self.conn.recv(1024)
             try:
-                keys = json.loads(key)
+                keys = json.loads(key.decode('utf-8'))
             except (ValueError, TypeError) as exc:
                 keys = [0, 0, 0, 0]
                 print(exc)
