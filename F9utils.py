@@ -46,7 +46,7 @@ class F9GameClient:
         return status
 
     def getReward(self, state):
-        agent, _, system = state
+        agent, platform, system = state
         if system["flight_status"] == "landed":
             score = 100.0
         elif self.isTerminalState(state):
@@ -57,8 +57,32 @@ class F9GameClient:
             # --------- YOUR CODE HERE ----------
             # You can write a reward function here. It will be used as a heuristics
             # for the states when the rocket is neither landed nor crashed.
+            # if self.agent_dist_history:
+            #     score += (self.agent_dist_history[-1] - agent['dist'])
 
+
+
+            # The following logic provides scoring based on main conditions for successful landing: speed,
+            # angle and position in relation to the platform
+            # if two of three indicators are positive - the score is positive but it's dynamics(up, down) depends on the
+            # third indicator, so the brain could be able to determine how to tune the vy speed
             score = 0.0
+
+            score += (7.0 + agent["vy"]) # if (7.0 + agent["vy"]) < 0 else (7.0 + agent["vy"]) # Do nothing
+
+            if agent["angle"] < 0.01:
+                score += 5
+            else:
+                score -= agent["angle"] * 10
+
+            if abs(agent['px'] - platform['px']) < 15:
+                score += 5
+            else:
+                score -= abs(agent['px'] - platform['px']) / 3
+
+            if agent['contact'] and abs(agent['vy']) < 30:
+                score += 50
+
             # -----------------------------------
 
         self.totalScore += score
